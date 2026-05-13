@@ -1,6 +1,8 @@
 import { useState, useEffect } from "react";
 import { hasFileSystemAccess } from "../lib/filesystem";
 
+const isTauri = typeof window !== "undefined" && "__TAURI__" in window;
+
 interface Props {
   children: React.ReactNode;
 }
@@ -40,7 +42,7 @@ export default function BrowserCheck({ children }: Props) {
   }
 
   // Show feature notice for browsers without File System Access API
-  const noFSA = !hasFileSystemAccess();
+  const noFSA = !isTauri && !hasFileSystemAccess();
 
   return (
     <>

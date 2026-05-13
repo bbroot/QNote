@@ -2,7 +2,7 @@ import { useEffect, useRef, useCallback, useState } from "react";
 import { EditorState } from "prosemirror-state";
 import { EditorView } from "prosemirror-view";
 import { keymap } from "prosemirror-keymap";
-import { baseKeymap, toggleMark, setBlockType, wrapIn, splitBlock } from "prosemirror-commands";
+import { baseKeymap, toggleMark, setBlockType, wrapIn, chainCommands, newlineInCode, createParagraphNear, liftEmptyBlock, splitBlock } from "prosemirror-commands";
 import { wrapInList } from "prosemirror-schema-list";
 import { history, undo, redo } from "prosemirror-history";
 import { dropCursor } from "prosemirror-dropcursor";
@@ -91,8 +91,6 @@ export default function Editor() {
           "Mod-2": setBlockType(editorSchema.nodes.heading, { level: 2 }),
           "Mod-3": setBlockType(editorSchema.nodes.heading, { level: 3 }),
           "Mod-0": setBlockType(editorSchema.nodes.paragraph),
-          "Enter": splitBlock,
-          "Mod-Enter": splitBlock,
         }),
         keymap(baseKeymap),
         tableEditing(),
@@ -103,6 +101,15 @@ export default function Editor() {
 
     const view = new EditorView(editorRef.current, {
       state,
+      handleKeyDown(view, event) {
+        if (event.key === "Enter" && !event.shiftKey) {
+          const cmd = chainCommands(newlineInCode, createParagraphNear, liftEmptyBlock, splitBlock);
+          if (cmd(view.state, view.dispatch, view)) {
+            return true;
+          }
+        }
+        return false;
+      },
       dispatchTransaction(tr) {
         const newState = view.state.apply(tr);
         view.updateState(newState);

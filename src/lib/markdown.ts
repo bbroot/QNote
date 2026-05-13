@@ -6,7 +6,7 @@ import { editorSchema } from "./schema";
 const md = new MarkdownIt("commonmark", {
   html: false,
   linkify: true,
-  breaks: false,
+  breaks: true,
 }).enable(["table", "strikethrough"]);
 
 // Override table renderer: markdown-it defaults to <thead>/<tbody> wrappers
@@ -137,6 +137,7 @@ export function serializeToMarkdown(doc: import("prosemirror-model").Node): stri
       case "paragraph": {
         const text = inlineContent(node);
         if (!text.trim()) { out(""); return; }
+        if (lines.length > 0) out("");
         out(text, indent);
         break;
       }

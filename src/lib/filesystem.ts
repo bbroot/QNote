@@ -1,119 +1,97 @@
 /**
- * Portable filesystem layer for MarkFlowy.
- *
- * Uses the File System Access API (Chromium/Edge) when available,
- * and falls back to a pure In-Memory + IndexedDB layer for Safari / Firefox.
- * No Node.js dependencies — runs entirely in the browser.
+ * MarkFlowy Filesystem Layer — Tauri v2 Native
+ * 
+ * Uses @tauri-apps/plugin-fs for file operations and @tauri-apps/plugin-dialog for pickers.
+ * Falls back to In-Memory + IndexedDB for non-file operations (snapshots).
  */
 
+import { open, save } from "@tauri-apps/plugin-dialog";
+import * as fs from "@tauri-apps/plugin-fs";
 import { wrapContent } from "./git";
 
-// ── Capability detection ────────────────────────────────────
-export function hasFileSystemAccess(): boolean {
-  return "showDirectoryPicker" in window;
-}
+// ── Workspace path (Tauri native) ──────────────────────────
+let _currentDir: string | null = null;
 
-export function supportsPortable(): boolean {
-  return true; // always works, even without FS Access API
-}
-
-// ── Workspace handle (only for FS Access API) ───────────────
-let _dirHandle: FileSystemDirectoryHandle | null = null;
-
-export async function openDirectoryPicker(): Promise<FileSystemDirectoryHandle | null> {
+export async function openDirectoryPicker(): Promise<string | null> {
   try {
-    const handle = await window.showDirectoryPicker({ mode: "readwrite" });
-    _dirHandle = handle;
-    return handle;
+    const selected = await open({ directory: true, multiple: false });
+    if (selected && typeof selected === 'string') {
+      _currentDir = selected;
+      return selected;
+    }
+    return null;
   } catch {
     return null;
   }
 }
 
-export function getDirHandle(): FileSystemDirectoryHandle | null {
-  return _dirHandle;
+export function getCurrentDir(): string | null {
+  return _currentDir;
 }
 
-export function setDirHandle(handle: FileSystemDirectoryHandle) {
-  _dirHandle = handle;
+export function setCurrentDir(path: string) {
+  _currentDir = path;
 }
 
-// ── Save picker for external files ─────────────────────────
-export async function showSaveFilePicker(
-  suggestedName?: string
-): Promise<FileSystemFileHandle | null> {
+// ── Save/Export picker ─────────────────────────────────────
+export async function showSaveFilePicker(suggestedName?: string): Promise<string | null> {
   try {
-    const handle = await window.showSaveFilePicker({
-      suggestedName: suggestedName || "untitled.md",
-      types: [
-        {
-          description: "Markdown Files",
-          accept: { "text/markdown": [".md", ".markdown"] },
-        },
-      ],
+    const path = await save({
+      defaultPath: suggestedName || "untitled.md",
+      filters: [{ name: "Markdown", extensions: ["md", "markdown"] }]
     });
-    return handle;
+    return path;
   } catch {
     return null;
   }
 }
-export async function writeFileWithHandle(
-  handle: FileSystemFileHandle,
-  content: string
-): Promise<void> {
-  const writable = await handle.createWritable();
-  await writable.write(content);
-  await writable.close();
-}
 
-// ── Open a single file via picker ──────────────────────────
-export async function openFilePicker(): Promise<{ handle: FileSystemFileHandle; content: string } | null> {
+// ── Open single file picker ───────────────────────────────
+export async function openFilePicker(): Promise<{ path: string; content: string } | null> {
   try {
-    const [handle] = await window.showOpenFilePicker({
-      types: [
-        {
-          description: "Markdown Files",
-          accept: { "text/markdown": [".md", ".markdown"] },
-        },
-      ],
+    const selected = await open({
+      multiple: false,
+      filters: [{ name: "Markdown", extensions: ["md", "markdown"] }]
     });
-    const file = await handle.getFile();
-    const content = await file.text();
-    return { handle, content };
+    if (selected && typeof selected === 'string') {
+      const content = await fs.readTextFile(selected);
+      return { path: selected, content };
+    }
+    return null;
   } catch {
     return null;
   }
 }
 
-// ── Read / Write via FS Access API ──────────────────────────
-
+// ── Read / Write via Tauri FS ──────────────────────────────
 export async function readFile(relativePath: string): Promise<string> {
-  const handle = getDirHandle();
-  if (!handle) throw new Error("No directory opened");
-
-  const parts = relativePath.split("/");
-  let current: FileSystemDirectoryHandle = handle;
-  for (let i = 0; i < parts.length - 1; i++) {
-    current = await current.getDirectoryHandle(parts[i]);
+  if (relativePath.startsWith('/')) {
+    return fs.readTextFile(relativePath);
   }
-  const fileHandle = await current.getFileHandle(parts[parts.length - 1]);
-  const file = await fileHandle.getFile();
-  return file.text();
+  const base = getCurrentDir();
+  if (!base) throw new Error("No directory opened");
+  const fullPath = `${base}/${relativePath}`;
+  return fs.readTextFile(fullPath);
 }
 
 export async function writeFile(relativePath: string, content: string): Promise<void> {
-  const handle = getDirHandle();
-  if (!handle) throw new Error("No directory opened");
-
-  const parts = relativePath.split("/");
-  let current: FileSystemDirectoryHandle = handle;
-  for (let i = 0; i < parts.length - 1; i++) {
-    current = await current.getDirectoryHandle(parts[i], { create: true });
+  if (relativePath.startsWith('/')) {
+    await fs.writeTextFile(relativePath, content);
+    return;
   }
-  const fileHandle = await current.getFileHandle(parts[parts.length - 1], { create: true });
-  const writable = await fileHandle.createWritable();
-  await writable.write(content);
-  await writable.close();
+  const base = getCurrentDir();
+  if (!base) throw new Error("No directory opened");
+  const fullPath = `${base}/${relativePath}`;
+  const parts = relativePath.split("/");
+  if (parts.length > 1) {
+    const dirParts = parts.slice(0, -1);
+    let current = base;
+    for (const part of dirParts) {
+      current = `${current}/${part}`;
+      try { await fs.mkdir(current, { recursive: true }); } catch { /* exists */ }
+    }
+  }
+  await fs.writeTextFile(fullPath, content);
 }
 
 export async function createFile(relativePath: string): Promise<void> {
@@ -121,34 +99,33 @@ export async function createFile(relativePath: string): Promise<void> {
 }
 
 export async function createDir(relativePath: string): Promise<void> {
-  const handle = getDirHandle();
-  if (!handle) throw new Error("No directory opened");
-  const parts = relativePath.split("/");
-  let current: FileSystemDirectoryHandle = handle;
-  for (const part of parts) {
-    current = await current.getDirectoryHandle(part, { create: true });
-  }
+  const base = getCurrentDir();
+  if (!base) throw new Error("No directory opened");
+  const fullPath = `${base}/${relativePath}`;
+  await fs.mkdir(fullPath, { recursive: true });
 }
 
 export async function deleteFileEntry(relativePath: string): Promise<void> {
-  const handle = getDirHandle();
-  if (!handle) throw new Error("No directory opened");
-  const parts = relativePath.split("/");
-  let current: FileSystemDirectoryHandle = handle;
-  for (let i = 0; i < parts.length - 1; i++) {
-    current = await current.getDirectoryHandle(parts[i]);
+  const base = getCurrentDir();
+  if (!base) throw new Error("No directory opened");
+  const fullPath = `${base}/${relativePath}`;
+  try {
+    await fs.remove(fullPath);
+  } catch {
+    // Try as dir
+    await fs.remove(fullPath, { recursive: true });
   }
-  await current.removeEntry(parts[parts.length - 1], { recursive: true });
 }
 
 export async function renameFileEntry(oldPath: string, newPath: string): Promise<void> {
+  const base = getCurrentDir();
+  if (!base) throw new Error("No directory opened");
   const content = await readFile(oldPath);
   await writeFile(newPath, content);
   await deleteFileEntry(oldPath);
 }
 
-// ── Directory tree (FS Access API only) ─────────────────────
-
+// ── Directory tree ──────────────────────────────────────────
 export interface TreeEntry {
   name: string;
   path: string;
@@ -156,21 +133,23 @@ export interface TreeEntry {
   children: TreeEntry[];
 }
 
-export async function listDirectory(
-  dirHandle: FileSystemDirectoryHandle,
-  basePath = ""
-): Promise<TreeEntry[]> {
+async function readDirRecursive(dirPath: string, basePath: string): Promise<TreeEntry[]> {
   const entries: TreeEntry[] = [];
-  for await (const [name, handle] of (dirHandle as any).entries()) {
-    if (name.startsWith(".") || name === "node_modules" || name === "target") continue;
-    const entryPath = basePath ? `${basePath}/${name}` : name;
-    if (handle.kind === "directory") {
-      const children = await listDirectory(handle, entryPath);
-      entries.push({ name, path: entryPath, isDir: true, children });
-    } else if (name.endsWith(".md")) {
-      entries.push({ name, path: entryPath, isDir: false, children: [] });
+  try {
+    const items = await fs.readDir(dirPath);
+    for (const item of items) {
+      const name = item.name;
+      if (name.startsWith(".")) continue;
+      const entryPath = basePath ? `${basePath}/${name}` : name;
+      const fullPath = `${dirPath}/${name}`;
+      if (item.isDirectory) {
+        const children = await readDirRecursive(fullPath, entryPath);
+        entries.push({ name, path: entryPath, isDir: true, children });
+      } else if (name.endsWith(".md")) {
+        entries.push({ name, path: entryPath, isDir: false, children: [] });
+      }
     }
-  }
+  } catch { /* skip inaccessible */ }
   entries.sort((a, b) => {
     if (a.isDir !== b.isDir) return a.isDir ? -1 : 1;
     return a.name.localeCompare(b.name);
@@ -178,41 +157,46 @@ export async function listDirectory(
   return entries;
 }
 
-// ── Content search (FS Access API only) ──────────────────────
+export async function listDirectory(dirPath?: string, basePath = ""): Promise<TreeEntry[]> {
+  const base = dirPath || getCurrentDir();
+  if (!base) return [];
+  return readDirRecursive(base, basePath);
+}
 
+// ── Content search ──────────────────────────────────────────
 export async function searchFilesContent(query: string): Promise<[string, string][]> {
-  const handle = getDirHandle();
-  if (!handle) return [];
-
+  const base = getCurrentDir();
+  if (!base) return [];
   const results: [string, string][] = [];
   const q = query.toLowerCase();
 
-  async function searchDir(dir: FileSystemDirectoryHandle, base: string, depth: number) {
-    if (depth > 10) return;
-    for await (const [name, fileHandle] of (dir as any).entries()) {
-      if (name.startsWith(".") || name === "node_modules") continue;
-      const ep = base ? `${base}/${name}` : name;
-      if (fileHandle.kind === "file" && name.endsWith(".md")) {
-        try {
-          const file = await (fileHandle as FileSystemFileHandle).getFile();
-          const text = await file.text();
-          if (text.toLowerCase().includes(q)) {
-            const line = text.split("\n").find((l) => l.toLowerCase().includes(q)) || "";
-            results.push([ep, line.slice(0, 100)]);
-          }
-        } catch { /* skip */ }
-      } else if (fileHandle.kind === "directory") {
-        await searchDir(fileHandle as FileSystemDirectoryHandle, ep, depth + 1);
+  async function searchDir(dir: string, base: string) {
+    try {
+      const items = await fs.readDir(dir);
+      for (const item of items) {
+        if (item.name.startsWith(".")) continue;
+        const ep = base ? `${base}/${item.name}` : item.name;
+        const fullPath = `${dir}/${item.name}`;
+        if (item.isDirectory) {
+          await searchDir(fullPath, ep);
+        } else if (item.name.endsWith(".md")) {
+          try {
+            const text = await fs.readTextFile(fullPath);
+            if (text.toLowerCase().includes(q)) {
+              const line = text.split("\n").find(l => l.toLowerCase().includes(q)) || "";
+              results.push([ep, line.slice(0, 100)]);
+            }
+          } catch { /* skip */ }
+        }
       }
-    }
+    } catch { /* skip */ }
   }
 
-  await searchDir(handle, "", 0);
+  await searchDir(base, "");
   return results;
 }
 
-// ── Snapshot store (IndexedDB — works everywhere) ───────────
-
+// ── Snapshot store (IndexedDB) ──────────────────────────────
 export interface Snapshot {
   id: string;
   filePath: string;
@@ -236,23 +220,16 @@ function openDB(): Promise<IDBDatabase> {
   });
 }
 
-export async function saveSnapshot(
-  filePath: string,
-  content: string,
-  summary?: string
-): Promise<string> {
+export async function saveSnapshot(filePath: string, content: string, summary?: string): Promise<string> {
   const db = await openDB();
   const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const wordCount = content.trim().split(/\s+/).filter(Boolean).length;
-  const snapshot: Snapshot = { id, filePath, content, timestamp: Date.now(), wordCount, summary: summary || `Auto-save | ${wordCount} words` };
-
-  // Also save git blob via git layer (best-effort, don't block)
-  try {
-    await wrapContent(filePath, content);
-  } catch {
-    // git layer failure shouldn't block snapshot saves
-  }
-
+  const snapshot: Snapshot = {
+    id, filePath, content, timestamp: Date.now(),
+    wordCount, summary: summary || `Auto-save | ${wordCount} words`
+  };
+  // Also save git blob (best-effort)
+  try { await wrapContent(filePath, content); } catch { /* git layer failure shouldn't block */ }
   return new Promise((resolve, reject) => {
     const tx = db.transaction("snapshots", "readwrite");
     tx.objectStore("snapshots").put(snapshot);
@@ -268,7 +245,7 @@ export async function getSnapshots(filePath: string): Promise<Snapshot[]> {
     const req = tx.objectStore("snapshots").getAll();
     req.onsuccess = () => {
       const all = (req.result as Snapshot[])
-        .filter((s) => s.filePath === filePath)
+        .filter(s => s.filePath === filePath)
         .sort((a, b) => b.timestamp - a.timestamp);
       resolve(all);
     };
@@ -299,3 +276,7 @@ export async function cleanupSnapshots(filePath: string, keepCount: number): Pro
     tx.onerror = () => reject(tx.error);
   });
 }
+
+// ── Browser compat shims (always use Tauri in this build) ───
+export function hasFileSystemAccess(): boolean { return false; }
+export function supportsPortable(): boolean { return true; }

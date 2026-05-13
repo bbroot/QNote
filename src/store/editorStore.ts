@@ -10,7 +10,7 @@ export interface Tab {
   isDirty: boolean;
   wordCount: number;
   // For external files opened via picker (not in workspace)
-  fileHandle?: FileSystemFileHandle;
+  externalPath?: string;
 }
 
 export interface FileEntry {
@@ -58,7 +58,7 @@ interface EditorState {
   _initialized: boolean;
 
   // Actions
-  setWorkspace: (handle?: FileSystemDirectoryHandle) => Promise<void>;
+  setWorkspace: (path?: string) => Promise<void>;
   openFileExternal: () => Promise<void>;
   refreshFiles: () => Promise<void>;
   openFile: (path: string) => Promise<void>;
@@ -146,11 +146,13 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   fontSize: 16,
   lineHeight: 1.8,
 
-  setWorkspace: async (handle) => {
-    const dirHandle = handle || await fs.openDirectoryPicker();
-    if (!dirHandle) return;
+  setWorkspace: async (path) => {
+    const dirPath = path || await fs.openDirectoryPicker();
+    if (!dirPath) return;
+    fs.setCurrentDir(dirPath);
+    const name = dirPath.split("/").pop() || dirPath;
     set({
-      workspaceRoot: dirHandle.name,
+      workspaceRoot: dirPath,
       tabs: [],
       activeTabId: null,
     });
@@ -160,19 +162,14 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   openFileExternal: async () => {
     const result = await fs.openFilePicker();
     if (!result) return;
-    const { handle, content } = result;
-    // @ts-ignore - handle has name property at runtime
-    const name = handle.name || "untitled.md";
-    // Create a synthetic path for external files (they're not in workspace)
-    const path = name;
-
+    const { path, content } = result;
+    const name = path.split("/").pop() || "untitled.md";
     const { tabs } = get();
     const existing = tabs.find((t) => t.path === path);
     if (existing) {
       set({ activeTabId: existing.id });
       return;
     }
-
     const newTab: Tab = {
       id: genId(),
       path,
@@ -180,7 +177,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       content,
       isDirty: false,
       wordCount: countWords(content),
-      fileHandle: handle,
+      externalPath: path,
     };
     set((s) => ({
       tabs: [...s.tabs, newTab],
@@ -189,10 +186,10 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   },
 
   refreshFiles: async () => {
-    const handle = fs.getDirHandle();
-    if (!handle) return;
+    const dirPath = fs.getCurrentDir();
+    if (!dirPath) return;
     try {
-      const tree = await fs.listDirectory(handle);
+      const tree = await fs.listDirectory();
       set({ files: tree.map(toFileEntry) });
     } catch (e) {
       console.error("Failed to read directory:", e);
@@ -261,15 +258,14 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     const tab = get().tabs.find((t) => t.id === id);
     if (!tab) return;
     try {
-      // External file (opened via picker): use stored FileHandle
-      if (tab.fileHandle) {
-        await fs.writeFileWithHandle(tab.fileHandle, tab.content);
-        // Save snapshot for external files too (use file name as path)
-        await fs.saveSnapshot(tab.name, tab.content);
+      // External file (opened via picker): use save picker
+      if (tab.externalPath) {
+        await fs.writeFile(tab.externalPath, tab.content);
+        await fs.saveSnapshot(tab.externalPath, tab.content);
         set((s) => ({
           tabs: s.tabs.map((t) => (t.id === id ? { ...t, isDirty: false } : t)),
         }));
-        await get().loadHistory(tab.name);
+        await get().loadHistory(tab.externalPath);
         return;
       }
       // Workspace file
@@ -550,18 +546,17 @@ ${bodyHtml}
   saveAs: async (id, newPath?) => {
     const tab = get().tabs.find((t) => t.id === id);
     if (!tab) return;
-
     try {
-      // External file: use save picker
-      if (tab.fileHandle || !newPath) {
-        const handle = await fs.showSaveFilePicker(tab.name);
-        if (!handle) return;
-        await fs.writeFileWithHandle(handle, tab.content);
-        const savedName = handle.name;
+      // External file or no path: use save picker
+      if (tab.externalPath || !newPath) {
+        const savedPath = await fs.showSaveFilePicker(tab.name);
+        if (!savedPath) return;
+        await fs.writeFile(savedPath, tab.content);
+        const name = savedPath.split("/").pop() || savedPath;
         set((s) => ({
           tabs: s.tabs.map((t) =>
             t.id === id
-              ? { ...t, path: savedName, name: savedName, isDirty: false, fileHandle: handle }
+              ? { ...t, path: savedPath, name, isDirty: false, externalPath: savedPath }
               : t
           ),
         }));

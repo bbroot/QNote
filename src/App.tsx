@@ -66,11 +66,11 @@ export default function App() {
       if (!handle) continue;
       if (handle.kind === "directory") {
         // Dropped a folder → open as workspace
-        await setWorkspace(handle as FileSystemDirectoryHandle);
+        await setWorkspace(handle as unknown as string);
         break;
       }
       if (handle.kind === "file") {
-        const fileHandle = handle as FileSystemFileHandle;
+        const fileHandle = handle as any;
         const file = await fileHandle.getFile();
         const name = fileHandle.name;
         if (!name.endsWith(".md") && !name.endsWith(".markdown")) continue;
@@ -87,7 +87,6 @@ export default function App() {
             content,
             isDirty: false,
             wordCount: content.split(/\s+/).filter(Boolean).length,
-            fileHandle: fileHandle,
           };
           useEditorStore.setState((s) => ({
             tabs: [...s.tabs, newTab],
