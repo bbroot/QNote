@@ -1,4 +1,5 @@
 import { useEffect, useCallback, useState } from "react";
+import { listen } from "@tauri-apps/api/event";
 import { useEditorStore } from "./store/editorStore";
 import Sidebar from "./components/Sidebar";
 import TabBar from "./components/TabBar";
@@ -100,6 +101,38 @@ export default function App() {
 
   // Typora-like: auto-create blank document on startup
   useEffect(() => { initNewFile(); }, []);
+
+  // ── Handle file opened via double-click (file associations) ─
+  useEffect(() => {
+    let unlisten: (() => void) | null = null;
+    listen<{ path: string; name: string; content: string }>("file-open", (event) => {
+      const { path, name, content } = event.payload;
+      const state = useEditorStore.getState();
+      // Skip if already open
+      const existing = state.tabs.find(
+        (t) => t.path === path || t.externalPath === path
+      );
+      if (existing) {
+        useEditorStore.setState({ activeTabId: existing.id });
+        return;
+      }
+      // Open as external file tab
+      const newTab = {
+        id: Math.random().toString(36).slice(2),
+        path,
+        name,
+        content,
+        isDirty: false,
+        wordCount: content.split(/\s+/).filter(Boolean).length,
+        externalPath: path,
+      };
+      useEditorStore.setState((s) => ({
+        tabs: [...s.tabs, newTab],
+        activeTabId: newTab.id,
+      }));
+    }).then((fn) => { unlisten = fn; });
+    return () => { unlisten?.(); };
+  }, []);
 
   // Apply theme class to <html> element + github theme CSS variable overrides
   useEffect(() => {

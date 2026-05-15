@@ -63,26 +63,37 @@ export async function openFilePicker(): Promise<{ path: string; content: string 
   }
 }
 
+// ── Platform-aware absolute path check ───────────────────────
+function isAbsolutePath(path: string): boolean {
+  // Unix absolute path: starts with /
+  // Windows absolute path: starts with drive letter like C:\ or D:/
+  return path.startsWith('/') || /^[A-Za-z]:[\\\/]/.test(path);
+}
+
 // ── Read / Write via Tauri FS ──────────────────────────────
-export async function readFile(relativePath: string): Promise<string> {
-  if (relativePath.startsWith('/')) {
-    return fs.readTextFile(relativePath);
+export async function readFile(filePath: string): Promise<string> {
+  // Absolute path: read directly
+  if (isAbsolutePath(filePath)) {
+    return fs.readTextFile(filePath);
   }
+  // Relative path: resolve against workspace
   const base = getCurrentDir();
   if (!base) throw new Error("No directory opened");
-  const fullPath = `${base}/${relativePath}`;
+  const fullPath = `${base}/${filePath}`;
   return fs.readTextFile(fullPath);
 }
 
-export async function writeFile(relativePath: string, content: string): Promise<void> {
-  if (relativePath.startsWith('/')) {
-    await fs.writeTextFile(relativePath, content);
+export async function writeFile(filePath: string, content: string): Promise<void> {
+  // Absolute path: write directly
+  if (isAbsolutePath(filePath)) {
+    await fs.writeTextFile(filePath, content);
     return;
   }
+  // Relative path: resolve against workspace
   const base = getCurrentDir();
   if (!base) throw new Error("No directory opened");
-  const fullPath = `${base}/${relativePath}`;
-  const parts = relativePath.split("/");
+  const fullPath = `${base}/${filePath}`;
+  const parts = filePath.split("/");
   if (parts.length > 1) {
     const dirParts = parts.slice(0, -1);
     let current = base;

@@ -1,5 +1,5 @@
 {
-  "productName": "MarkFlowy",
+  "productName": "QNote",
   "version": "0.2.0",
   "identifier": "com.markflowy.desktop",
   "build": {
@@ -12,7 +12,7 @@
     "withGlobalTauri": true,
     "windows": [
       {
-        "title": "MarkFlowy",
+        "title": "QNote",
         "width": 1200,
         "height": 800,
         "minWidth": 800,
@@ -37,6 +37,14 @@
       "icons/32x32.png",
       "icons/128x128.png",
       "icons/128x128@2x.png"
+    ],
+    "fileAssociations": [
+      {
+        "ext": ["md", "markdown"],
+        "name": "Markdown Document",
+        "description": "Markdown file",
+        "role": "Editor"
+      }
     ]
   }
 }
