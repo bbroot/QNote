@@ -362,67 +362,6 @@ export default function App() {
         </button>
 
         <div className="text-sm font-semibold tracking-wide">QNote</div>
-
-        <div className="flex-1" />
-
-        {activeTab && (
-          <div className="flex items-center gap-1.5 text-xs text-[var(--text-secondary)]">
-            {activeTab.isDirty && (
-              <span className="w-2 h-2 rounded-full bg-[var(--warning)] inline-block" title="未保存" />
-            )}
-            <span className="truncate max-w-[180px]">{activeTab.name}</span>
-          </div>
-        )}
-
-        <div className="flex-1" />
-
-        <button
-          onClick={toggleEditorMode}
-          className={`flex items-center gap-1 px-2 py-1 rounded text-xs font-mono transition-colors ${
-            editorMode === "source"
-              ? "bg-[var(--accent)] text-white"
-              : "hover:bg-[var(--bg-primary)] text-[var(--text-secondary)]"
-          }`}
-          title="切换源码模式 ⌘/"
-        >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-            <polyline points="16 18 22 12 16 6" />
-            <polyline points="8 6 2 12 8 18" />
-          </svg>
-          源码
-        </button>
-
-        <button
-          onClick={toggleFocusMode}
-          className="px-2 py-1 rounded text-xs transition-colors hover:bg-[var(--bg-primary)]"
-          title="专注模式"
-        >
-          {focusMode ? "退出" : "专注"}
-        </button>
-
-        <button
-          onClick={toggleHistory}
-          className={`p-1.5 rounded transition-colors ${
-            historyOpen ? "bg-[var(--accent)] text-white" : "hover:bg-[var(--bg-primary)]"
-          }`}
-          title="历史记录"
-        >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <circle cx="12" cy="12" r="10" />
-            <polyline points="12,6 12,12 16,14" />
-          </svg>
-        </button>
-
-        <button
-          onClick={toggleSettings}
-          className="p-1.5 rounded hover:bg-[var(--bg-primary)] transition-colors"
-          title="设置"
-        >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <circle cx="12" cy="12" r="3" />
-            <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42" />
-          </svg>
-        </button>
       </div>
 
       {/* ── Main area ── */}

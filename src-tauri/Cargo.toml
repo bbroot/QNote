@@ -1,6 +1,6 @@
 [package]
 name = "qnote"
-version = "0.2.0"
+version = "0.3.0"
 description = "浏览器里的 Typora — 所见即所得 Markdown 编辑器"
 authors = ["bbroot"]
 license = "MIT"

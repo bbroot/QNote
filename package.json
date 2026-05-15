@@ -1,7 +1,7 @@
 {
   "name": "markflowy",
   "private": true,
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "浏览器里的 Typora — 所见即所得 Markdown 编辑器，支持版本历史、源码模式、表格编辑、5 种主题、跨平台打包分发",
   "keywords": [
     "markdown",

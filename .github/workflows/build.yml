@@ -50,10 +50,27 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
 
+      - name: Get version
+        id: version
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+
       - name: Build Tauri app
         run: npm run tauri:build -- --target ${{ matrix.target }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Pack portable (Windows)
+        if: matrix.platform == 'windows-latest'
+        shell: bash
+        run: |
+          EXE=$(find src-tauri/target -name "*.exe" -path "*/bundle/*" | head -1)
+          if [ -f "$EXE" ]; then
+            mkdir -p artifacts/portable
+            cp "$EXE" "artifacts/portable/QNote-${{ matrix.platform }}-v$(node -p 'require("./package.json").version').exe"
+            echo "Portable exe copied"
+          fi
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
@@ -66,6 +83,7 @@ jobs:
             src-tauri/target/**/bundle/**/*.exe
             src-tauri/target/**/bundle/**/*.deb
             src-tauri/target/**/bundle/**/*.AppImage
+            artifacts/portable/*
           if-no-files-found: error
 
   release:
@@ -75,18 +93,24 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Get version
+        id: version
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+
       - uses: actions/download-artifact@v4
         with:
           path: artifacts
         continue-on-error: true
 
-      - name: Create Nightly Release
+      - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
-          tag_name: nightly
-          name: Nightly Build
-          body: "Automated nightly build from latest main branch."
-          prerelease: true
+          tag_name: v${{ steps.version.outputs.VERSION }}
+          name: QNote v${{ steps.version.outputs.VERSION }}
+          body: "QNote Markdown Editor v${{ steps.version.outputs.VERSION }}\n\nPortable versions: copy the .exe/.AppImage to any folder, run directly without installation.\n\nInstallers: .msi (Windows) / .dmg (macOS) / .deb (Linux)"
+          prerelease: false
           files: artifacts/**/*
           fail_on_unmatched_files: false
         env:
