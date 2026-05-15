@@ -361,7 +361,7 @@ export default function App() {
           </svg>
         </button>
 
-        <div className="text-sm font-semibold tracking-wide">MarkFlowy</div>
+        <div className="text-sm font-semibold tracking-wide">QNote</div>
 
         <div className="flex-1" />
 

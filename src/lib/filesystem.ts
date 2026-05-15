@@ -7,6 +7,7 @@
 
 import { open, save } from "@tauri-apps/plugin-dialog";
 import * as fs from "@tauri-apps/plugin-fs";
+import { invoke } from "@tauri-apps/api/core";
 import { wrapContent } from "./git";
 
 // ── Workspace path (Tauri native) ──────────────────────────
@@ -72,9 +73,10 @@ function isAbsolutePath(path: string): boolean {
 
 // ── Read / Write via Tauri FS ──────────────────────────────
 export async function readFile(filePath: string): Promise<string> {
-  // Absolute path: read directly
+  // Absolute path: read via Rust (bypasses fs plugin scope, works on all platforms)
   if (isAbsolutePath(filePath)) {
-    return fs.readTextFile(filePath);
+    const info = await invoke("read_file_by_path", { path: filePath }) as { content: string };
+    return info.content;
   }
   // Relative path: resolve against workspace
   const base = getCurrentDir();
@@ -84,9 +86,9 @@ export async function readFile(filePath: string): Promise<string> {
 }
 
 export async function writeFile(filePath: string, content: string): Promise<void> {
-  // Absolute path: write directly
+  // Absolute path: write via Rust (bypasses fs plugin scope, works on all platforms)
   if (isAbsolutePath(filePath)) {
-    await fs.writeTextFile(filePath, content);
+    await invoke("write_file_by_path", { path: filePath, content });
     return;
   }
   // Relative path: resolve against workspace

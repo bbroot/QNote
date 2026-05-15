@@ -281,8 +281,9 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         tabs: s.tabs.map((t) => (t.id === id ? { ...t, isDirty: false } : t)),
       }));
       await get().loadHistory(tab.path);
-    } catch (e) {
+    } catch (e: any) {
       console.error("Failed to save file:", e);
+      window.alert(`保存失败:\n${e?.message || e || '未知错误'}`);
     }
   },
 
