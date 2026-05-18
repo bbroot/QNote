@@ -1,6 +1,6 @@
 {
   "productName": "QNote",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "identifier": "com.markflowy.desktop",
   "build": {
     "frontendDist": "../dist",

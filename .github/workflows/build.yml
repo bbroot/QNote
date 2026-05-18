@@ -55,6 +55,13 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Re-sign macOS app
+        if: matrix.platform == 'macos-latest'
+        run: |
+          APP_PATH=$(find src-tauri/target -name "*.app" -path "*/bundle/*" | head -1)
+          codesign --force --deep --sign - "$APP_PATH"
+          echo "App re-signed: $APP_PATH"
+
       - name: Pack portable (Windows)
         if: matrix.platform == 'windows-latest'
         shell: bash
